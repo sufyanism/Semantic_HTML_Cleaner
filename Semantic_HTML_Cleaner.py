@@ -1,7 +1,9 @@
 import streamlit as st
 from bs4 import BeautifulSoup
+import zipfile
+import io
 
-# ------------------ Semantic Mapping ------------------
+# Semantic mapping
 SEMANTIC_MAP = {
     "header": "header",
     "nav": "nav",
@@ -20,15 +22,13 @@ SEMANTIC_MAP = {
 def guess_semantic_tag(tag):
     class_id = " ".join(tag.get("class", [])) + " " + (tag.get("id") or "")
     class_id = class_id.lower()
-
     for key, semantic in SEMANTIC_MAP.items():
         if key in class_id:
             return semantic
     return None
 
-def convert_html_content(html_content: str) -> str:
+def convert_html_content(html_content):
     soup = BeautifulSoup(html_content, "lxml")
-
     for tag in soup.find_all(["div", "span"]):
         semantic = guess_semantic_tag(tag)
         if semantic:
@@ -38,11 +38,34 @@ def convert_html_content(html_content: str) -> str:
             tag.replace_with(new_tag)
         else:
             tag.unwrap()
-
+    # Remove empty tags
+    remove_empty_tags(soup)
     return soup.prettify()
 
-# ------------------ Streamlit UI ------------------
-st.set_page_config(page_title="Semantic HTML Cleaner", layout="centered")
+def remove_empty_tags(soup):
+    """
+    Recursively remove tags with no content or only whitespace.
+    """
+    for tag in soup.find_all():
+        # Remove tags with no children or only whitespace
+        if not tag.contents or all(
+            (str(content).strip() == "" if isinstance(content, str) else False)
+            for content in tag.contents
+        ):
+            tag.decompose()
+
+def is_valid_epub(file_bytes):
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+            if 'mimetype' in z.namelist():
+                mimetype_content = z.read('mimetype').decode('utf-8').strip()
+                return mimetype_content == 'application/epub+zip'
+            else:
+                return False
+    except zipfile.BadZipFile:
+        return False
+
+st.set_page_config(page_title="Semantic HTML Cleaner & EPUB Validator", layout="centered")
 
 st.markdown("""
 <style>
@@ -66,39 +89,55 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="title">🧹 Semantic HTML Cleaner</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Upload your HTML file to remove <code>&lt;div&gt;</code> and <code>&lt;span&gt;</code> and convert to semantic tags.</div>', unsafe_allow_html=True)
+st.markdown('<div class="title">🧹 Semantic HTML Cleaner & EPUB Validator</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Upload your HTML or EPUB file for validation and cleaning.</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="upload-box">📤 Upload your HTML file below</div>', unsafe_allow_html=True)
+st.markdown('<div class="upload-box">📤 Upload your HTML or EPUB file below</div>', unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("Choose an HTML file", type=["html", "htm"], label_visibility="collapsed")
+uploaded_file = st.file_uploader("Choose an HTML or EPUB file", type=["html", "epub"])
 
 if uploaded_file:
-    html_content = uploaded_file.read().decode("utf-8", errors="ignore")
+    # Read the file bytes
+    file_bytes = uploaded_file.read()
+    filename = uploaded_file.name
 
-    col1, col2 = st.columns(2)
+    # Check if EPUB and validate
+    if filename.lower().endswith('.epub'):
+        is_epub_valid = is_valid_epub(file_bytes)
+        if is_epub_valid:
+            st.success("✅ Valid EPUB file detected!")
+        else:
+            st.error("❌ Invalid EPUB file or corrupted file.")
+        # Reset pointer after reading
+        uploaded_file.seek(0)
 
-    with col1:
-        st.subheader("📄 Original HTML (Preview)")
-        st.code(html_content[:2000], language="html")
+    # If HTML file, decode content
+    if filename.lower().endswith('.html') or filename.lower().endswith('.htm'):
+        html_content = file_bytes.decode("utf-8", errors="ignore")
 
-    with col2:
-        st.subheader("⚙️ Actions")
-        if st.button("✨ Convert to Semantic HTML", use_container_width=True):
-            cleaned_html = convert_html_content(html_content)
+        # Show preview
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("📄 Original HTML (Preview)")
+            st.code(html_content[:2000], language="html")
+        with col2:
+            st.subheader("⚙️ Actions")
+            if st.button("✨ Convert to Semantic HTML"):
+                cleaned_html = convert_html_content(html_content)
+                filename_base = filename.replace('.html', '').replace('.htm', '')
+                semantic_filename = filename_base + "_semantic.html"
 
-            st.success("Conversion complete! 🎉")
-
-            st.download_button(
-                label="⬇️ Download Cleaned HTML",
-                data=cleaned_html,
-                file_name="semantic_output.html",
-                mime="text/html",
-                use_container_width=True
-            )
-
-            st.subheader("✅ Cleaned Output (Preview)")
-            st.code(cleaned_html[:2000], language="html")
-
+                st.success("Conversion complete! 🎉")
+                st.download_button(
+                    label="⬇️ Download Cleaned HTML",
+                    data=cleaned_html,
+                    file_name=semantic_filename,
+                    mime="text/html"
+                )
+                st.caption(f"📁 Output file: {semantic_filename}")
+                st.subheader("✅ Cleaned Output (Preview)")
+                st.code(cleaned_html[:2000], language="html")
+    else:
+        st.info("Please upload a valid HTML or EPUB file.")
 else:
-    st.info("👆 Upload an HTML file to get started.")
+    st.info("👆 Upload an HTML or EPUB file to get started.")
