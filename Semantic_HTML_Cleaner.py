@@ -47,7 +47,6 @@ def remove_empty_tags(soup):
     Recursively remove tags with no content or only whitespace.
     """
     for tag in soup.find_all():
-        # Remove tags with no children or only whitespace
         if not tag.contents or all(
             (str(content).strip() == "" if isinstance(content, str) else False)
             for content in tag.contents
@@ -86,6 +85,16 @@ st.markdown("""
         margin-bottom: 1.5rem;
         background: #fafafa;
     }
+    /* Style for scrollable preview */
+    .scrollable-preview {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        margin-top: 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -108,35 +117,33 @@ if uploaded_file:
             st.success("✅ Valid EPUB file detected!")
         else:
             st.error("❌ Invalid EPUB file or corrupted file.")
-        # Reset pointer after reading
         uploaded_file.seek(0)
 
     # If HTML file, decode content
     if filename.lower().endswith('.html') or filename.lower().endswith('.htm'):
         html_content = file_bytes.decode("utf-8", errors="ignore")
 
-        # Show preview
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("📄 Original HTML (Preview)")
-            st.code(html_content[:2000], language="html")
-        with col2:
-            st.subheader("⚙️ Actions")
-            if st.button("✨ Convert to Semantic HTML"):
-                cleaned_html = convert_html_content(html_content)
-                filename_base = filename.replace('.html', '').replace('.htm', '')
-                semantic_filename = filename_base + "_semantic.html"
+        # Show convert button
+        if st.button("✨ Convert to Semantic HTML"):
+            cleaned_html = convert_html_content(html_content)
+            filename_base = filename.replace('.html', '').replace('.htm', '')
+            semantic_filename = filename_base + "_semantic.html"
 
-                st.success("Conversion complete! 🎉")
-                st.download_button(
-                    label="⬇️ Download Cleaned HTML",
-                    data=cleaned_html,
-                    file_name=semantic_filename,
-                    mime="text/html"
+            st.success("Conversion complete! 🎉")
+            st.download_button(
+                label="⬇️ Download Cleaned HTML",
+                data=cleaned_html,
+                file_name=semantic_filename,
+                mime="text/html"
+            )
+
+            # Display scrollable preview of cleaned HTML
+            st.subheader("📝 Cleaned HTML Preview")
+            with st.container():
+                st.markdown(
+                    f'<div class="scrollable-preview"><pre>{cleaned_html}</pre></div>',
+                    unsafe_allow_html=True
                 )
-                st.caption(f"📁 Output file: {semantic_filename}")
-                st.subheader("✅ Cleaned Output (Preview)")
-                st.code(cleaned_html[:2000], language="html")
     else:
         st.info("Please upload a valid HTML or EPUB file.")
 else:
